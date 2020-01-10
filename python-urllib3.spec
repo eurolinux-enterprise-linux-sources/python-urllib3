@@ -8,7 +8,7 @@
 
 Name:           python-%{srcname}
 Version:        1.10.2
-Release:        1%{?dist}
+Release:        3%{?dist}
 Summary:        Python HTTP library with thread-safe connection pooling and file post
 
 License:        MIT
@@ -18,6 +18,12 @@ Source0:        http://pypi.python.org/packages/source/u/%{srcname}/%{srcname}-%
 # Patch to change default behaviour to check SSL certs for validity
 # https://bugzilla.redhat.com/show_bug.cgi?id=855320
 Patch0:         python-urllib3-default-ssl-cert-validate.patch
+
+# Patch for the PoolManager instance, to take into consideration new configurations
+# when providing a pooled connection for a request
+# https://github.com/shazow/urllib3/pull/830
+# https://bugzilla.redhat.com/show_bug.cgi?id=1329382
+patch1: key-connection-pools-off-custom-keys.patch
 
 BuildArch:      noarch
 
@@ -72,6 +78,7 @@ Python3 HTTP module with connection pooling and file POST abilities.
 rm -rf test/with_dummyserver/
 
 %patch0 -p1
+%patch1 -p1
 
 %if 0%{?with_python3}
 rm -rf %{py3dir}
@@ -95,7 +102,13 @@ rm -rf %{buildroot}/%{python_sitelib}/urllib3/packages/six.py*
 rm -rf %{buildroot}/%{python_sitelib}/urllib3/packages/ssl_match_hostname/
 
 mkdir -p %{buildroot}/%{python_sitelib}/urllib3/packages/
-ln -s ../../six.py %{buildroot}/%{python_sitelib}/urllib3/packages/six.py
+# Fix the way we unbundle six by making symlinks to its compiled .pyc and .pyo
+# files, in addition to the six.py, thus making six importable under all circumstances
+# Resolves: rhbz#1336723
+# Related bug: rhbz#1247093
+for i in ../../six.py{,o,c}; do
+  ln -s $i %{buildroot}/%{python_sitelib}/urllib3/packages/
+done
 ln -s ../../backports/ssl_match_hostname %{buildroot}/%{python_sitelib}/urllib3/packages/ssl_match_hostname
 
 # dummyserver is part of the unittest framework
@@ -132,6 +145,15 @@ popd
 %endif # with_python3
 
 %changelog
+* Thu Oct 06 2016 Charalampos Stratakis <cstratak@redhat.com> - 1.10.2-3
+- Fix the way we unbundle six by making symlinks to its .pyc and .pyo files
+Resolves: rhbz#1336723
+
+* Thu Sep 08 2016 Charalampos Stratakis <cstratak@redhat.com> - 1.10.2-2
+- Upstream patch for fixing issue of new configs not taken into account
+by the PoolManager instance
+Resolves: rhbz#1329382
+
 * Mon Apr 13 2015 Matej Stuchlik <mstuchli@redhat.com> - 1.10.2-1
 - Update to 1.10.2
 Resolves: rhbz#1176257
