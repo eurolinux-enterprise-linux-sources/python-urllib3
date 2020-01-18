@@ -1,19 +1,19 @@
-%if 0%{?fedora}
-%global with_python3 1
-%else
-%{!?python_sitelib: %global python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print (get_python_lib())")}
-%endif
+# Tests are EPEL only
+%bcond_with tests
+
+# No Python 3 by default
+%bcond_with python3
 
 %global srcname urllib3
 
 Name:           python-%{srcname}
 Version:        1.10.2
-Release:        5%{?dist}
+Release:        7%{?dist}
 Summary:        Python HTTP library with thread-safe connection pooling and file post
 
 License:        MIT
 URL:            http://urllib3.readthedocs.org/
-Source0:        http://pypi.python.org/packages/source/u/%{srcname}/%{srcname}-%{version}.tar.gz
+Source0:        https://pypi.python.org/packages/source/u/%{srcname}/%{srcname}-%{version}.tar.gz
 
 # Patch to change default behaviour to check SSL certs for validity
 # https://bugzilla.redhat.com/show_bug.cgi?id=855320
@@ -29,6 +29,22 @@ Patch1: key-connection-pools-off-custom-keys.patch
 # https://bugzilla.redhat.com/show_bug.cgi?id=1434114
 # Upstream: https://github.com/shazow/urllib3/pull/922
 Patch2: Add-support-for-IP-address-SAN-fields.patch
+
+# Patch for CVE-2018-20060
+# Cross-host redirect does not remove Authorization header allow
+# for credential exposure
+# Backported without tests!
+# https://bugzilla.redhat.com/show_bug.cgi?id=1649153
+# Upstream: https://github.com/urllib3/urllib3/pull/1346
+Patch3: CVE-2018-20060.patch
+
+# Patch for CVE-2019-9740
+# CRLF injection due to not encoding the '\r\n' sequence leading to possible
+# attack on internal service.
+# https://github.com/urllib3/urllib3/pull/1591/commits/c147f359520cab339ec96b3ef96e471c0da261f6
+# https://github.com/urllib3/urllib3/pull/1593/commits/e951dfc83a642b0b5239559cb1c8cc287481f1ae
+# https://bugzilla.redhat.com/show_bug.cgi?id=1700824
+Patch4: CVE-2019-9740.patch
 
 BuildArch:      noarch
 
@@ -50,30 +66,38 @@ BuildRequires:  python-six
 BuildRequires:  python-backports-ssl_match_hostname
 BuildRequires:  python-ipaddress
 # For unittests
-#BuildRequires: python-nose
-#BuildRequires: python-tornado
-#BuildRequires: python-mock
+%if %{with tests}
+BuildRequires: python-nose
+BuildRequires: python-tornado
+BuildRequires: python-mock
+%endif
 
-%if 0%{?with_python3}
-BuildRequires:  python3-devel
-# For unittests
-BuildRequires:  python3-nose
-BuildRequires:  python3-six
-BuildRequires:  python3-tornado
-%endif # with_python3
+%{?python_provide:%python_provide %{name}}
 
 %description
 Python HTTP module with connection pooling and file POST abilities.
 
-%if 0%{?with_python3}
+
+%if %{with python3}
 %package -n python3-%{srcname}
+Summary:        Python 3 HTTP library with thread-safe connection pooling and file post
+%{?python_provide:%python_provide python3-%{srcname}}
+
 Requires:       ca-certificates
 Requires:       python3-six
-# Note: Will not run with python3 < 3.2 (unless python3-backports-ssl_match_hostname is created)
-Summary:        Python3 HTTP library with thread-safe connection pooling and file post
+BuildRequires:  python3-devel
+
+# For unittests
+%if %{with tests}
+BuildRequires:  python3-nose
+BuildRequires:  python3-six
+BuildRequires:  python3-tornado
+BuildRequires:  python3-mock
+%endif # with tests
+
 %description -n python3-%{srcname}
 Python3 HTTP module with connection pooling and file POST abilities.
-%endif # with_python3
+%endif # with python3
 
 
 %prep
@@ -86,70 +110,73 @@ rm -rf test/with_dummyserver/
 %patch0 -p1
 %patch1 -p1
 %patch2 -p1
+%patch3 -p1
+%patch4 -p1
 
-%if 0%{?with_python3}
-rm -rf %{py3dir}
-cp -a . %{py3dir}
-%endif # with_python3
 
 %build
-%{__python} setup.py build
+%py2_build
 
-%if 0%{?with_python3}
-pushd %{py3dir}
-%{__python3} setup.py build
-popd
-%endif # with_python3
+%if %{with python3}
+%py3_build
+%endif
 
 %install
-rm -rf %{buildroot}
-%{__python} setup.py install --skip-build --root %{buildroot}
+%py2_install
 
-rm -rf %{buildroot}/%{python_sitelib}/urllib3/packages/six.py*
-rm -rf %{buildroot}/%{python_sitelib}/urllib3/packages/ssl_match_hostname/
+rm -rf %{buildroot}/%{python2_sitelib}/urllib3/packages/six.py*
+rm -rf %{buildroot}/%{python2_sitelib}/urllib3/packages/ssl_match_hostname/
 
-mkdir -p %{buildroot}/%{python_sitelib}/urllib3/packages/
+mkdir -p %{buildroot}/%{python2_sitelib}/urllib3/packages/
 # ovirt composes remove *.py files, leaving only *.pyc files there; this means we have to symlink
 #  six.py* to make sure urllib3.packages.six will be importable
 for i in ../../six.py{,o,c}; do
-  ln -s $i %{buildroot}/%{python_sitelib}/urllib3/packages/
+  ln -s $i %{buildroot}/%{python2_sitelib}/urllib3/packages/
 done
-ln -s ../../backports/ssl_match_hostname %{buildroot}/%{python_sitelib}/urllib3/packages/ssl_match_hostname
+ln -s ../../backports/ssl_match_hostname %{buildroot}/%{python2_sitelib}/urllib3/packages/ssl_match_hostname
 
 # dummyserver is part of the unittest framework
-rm -rf %{buildroot}%{python_sitelib}/dummyserver
+rm -rf %{buildroot}%{python2_sitelib}/dummyserver
 
-%if 0%{?with_python3}
-pushd %{py3dir}
-%{__python3} setup.py install --skip-build --root %{buildroot}
+%if %{with python3}
+%py3_install
 
 # dummyserver is part of the unittest framework
 rm -rf %{buildroot}%{python3_sitelib}/dummyserver
-popd
-%endif # with_python3
+%endif # with python3
 
-#%%check
-#nosetests
+%if %{with tests}
+%check
+nosetests-%{python2_version}
 
-#%if 0%{?with_python3}
-#pushd %{py3dir}
-#nosetests-%{python3_version}
-#popd
-#%endif # with_python3
+%if %{with python3}
+nosetests-%{python3_version}
+%endif # with python3
+%endif # with tests
 
 %files
-%doc CHANGES.rst LICENSE.txt README.rst CONTRIBUTORS.txt
-# For noarch packages: sitelib
-%{python_sitelib}/*
+%doc CHANGES.rst README.rst CONTRIBUTORS.txt
+%license LICENSE.txt
+%{python2_sitelib}/urllib3*
 
-%if 0%{?with_python3}
+%if %{with python3}
 %files -n python3-%{srcname}
-%doc LICENSE.txt
-# For noarch packages: sitelib
-%{python3_sitelib}/*
-%endif # with_python3
+%doc CHANGES.rst README.rst CONTRIBUTORS.txt
+%license LICENSE.txt
+%{python3_sitelib}/urllib3*
+%endif # with python3
 
 %changelog
+* Fri May 03 2019 Miro Hrončok <mhroncok@redhat.com> - 1.10.2-7
+- Provide python2-urllib3
+- Add patch for CVE-2019-11236
+Resolves: rhbz#1703360
+
+* Mon Mar 04 2019 Lumír Balhar <lbalhar@redhat.com> - 1.10.2-6
+- Source URL switched to HTTPS protocol
+- Add patch for CVE-2018-20060
+Resolves: rhbz#1658471
+
 * Wed Oct 11 2017 Iryna Shcherbina <ishcherb@redhat.com> - 1.10.2-5
 - Add patch to support IP address SAN fields.
 Resolves: rhbz#1434114
