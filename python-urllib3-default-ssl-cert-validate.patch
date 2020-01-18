@@ -8,7 +8,7 @@ diff -up urllib3-1.10.2/urllib3/connectionpool.py.ms urllib3-1.10.2/urllib3/conn
 -                 key_file=None, cert_file=None, cert_reqs=None,
 -                 ca_certs=None, ssl_version=None,
 +                 key_file=None, cert_file=None, cert_reqs='CERT_REQUIRED',
-+                 ca_certs='/etc/ssl/certs/ca-certificates.crt', ssl_version=None,
++                 ca_certs='/etc/ssl/certs/ca-bundle.crt', ssl_version=None,
                   assert_hostname=None, assert_fingerprint=None,
                   **conn_kw):
  

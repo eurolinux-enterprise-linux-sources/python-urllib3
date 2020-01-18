@@ -1,0 +1,161 @@
+diff --git a/CHANGES.rst b/CHANGES.rst
+index b2b8ae6..0150d85 100644
+--- a/CHANGES.rst
++++ b/CHANGES.rst
+@@ -1,6 +1,9 @@
+ Changes
+ =======
+ 
++* Accept ``iPAddress`` subject alternative name fields in TLS certificates.
++  (Issue #258)
++
+ 1.10.2 (2015-02-25)
+ +++++++++++++++++++
+ 
+diff --git a/dummyserver/certs/server.ip_san.crt b/dummyserver/certs/server.ip_san.crt
+new file mode 100644
+index 000000000..58689d64d
+--- /dev/null
++++ b/dummyserver/certs/server.ip_san.crt
+@@ -0,0 +1,21 @@
++-----BEGIN CERTIFICATE-----
++MIIDeTCCAuKgAwIBAgIBATANBgkqhkiG9w0BAQUFADCBgTELMAkGA1UEBhMCRkkx
++DjAMBgNVBAgMBWR1bW15MQ4wDAYDVQQHDAVkdW1teTEOMAwGA1UECgwFZHVtbXkx
++DjAMBgNVBAsMBWR1bW15MREwDwYDVQQDDAhTbmFrZU9pbDEfMB0GCSqGSIb3DQEJ
++ARYQZHVtbXlAdGVzdC5sb2NhbDAeFw0xMTEyMjIwNzU4NDBaFw0yMTEyMTgwNzU4
++NDBaMGExCzAJBgNVBAYTAkZJMQ4wDAYDVQQIDAVkdW1teTEOMAwGA1UEBwwFZHVt
++bXkxDjAMBgNVBAoMBWR1bW15MQ4wDAYDVQQLDAVkdW1teTESMBAGA1UEAwwJbG9j
++YWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDXe3FqmCWvP8XPxqtT
+++0bfL1Tvzvebi46k0WIcUV8bP3vyYiSRXG9ALmyzZH4GHY9UVs4OEDkCMDOBSezB
++0y9ai/9doTNcaictdEBu8nfdXKoTtzrn+VX4UPrkH5hm7NQ1fTQuj1MR7yBCmYqN
++3Q2Q+Efuujyx0FwBzAuy1aKYuwIDAQABo4IBHjCCARowCQYDVR0TBAIwADAdBgNV
++HQ4EFgQUG+dK5Uos08QUwAWofDb3a8YcYlIwgbYGA1UdIwSBrjCBq4AUGXd/I2Ji
++QllF+3Wdx3NyBLszCi2hgYekgYQwgYExCzAJBgNVBAYTAkZJMQ4wDAYDVQQIDAVk
++dW1teTEOMAwGA1UEBwwFZHVtbXkxDjAMBgNVBAoMBWR1bW15MQ4wDAYDVQQLDAVk
++dW1teTERMA8GA1UEAwwIU25ha2VPaWwxHzAdBgkqhkiG9w0BCQEWEGR1bW15QHRl
++c3QubG9jYWyCCQCz67HKL+G/4zAJBgNVHRIEAjAAMCoGA1UdEQQjMCGBDnJvb3RA
++bG9jYWxob3N0gglsb2NhbGhvc3SHBH8AAAEwDQYJKoZIhvcNAQEFBQADgYEAFEAy
++O9rxM14W0pVJWHTZkWBcDTqp8A8OB3JFVxeuCNcbtyfyYLWs2juv4YMmo1EKBOQe
++7LYfGuIvtIzT7KBa2QAPmX9JR+F6yl0IVSrYYt9hS7w9Cqr8+jK9QRpNwm3k25hp
++BmmoT5b9Q+AYcLMtdMu3uFjLmQBI2XobI/9vCT4=
++-----END CERTIFICATE-----
+diff --git a/dummyserver/server.py b/dummyserver/server.py
+index 18d81e1..3190835 100755
+--- a/dummyserver/server.py
++++ b/dummyserver/server.py
+@@ -32,6 +32,10 @@ NO_SAN_CERTS = {
+     'certfile': os.path.join(CERTS_PATH, 'server.no_san.crt'),
+     'keyfile': DEFAULT_CERTS['keyfile']
+ }
++IP_SAN_CERTS = {
++    'certfile': os.path.join(CERTS_PATH, 'server.ip_san.crt'),
++    'keyfile': DEFAULT_CERTS['keyfile']
++}
+ DEFAULT_CA = os.path.join(CERTS_PATH, 'cacert.pem')
+ DEFAULT_CA_BAD = os.path.join(CERTS_PATH, 'client_bad.pem')
+ NO_SAN_CA = os.path.join(CERTS_PATH, 'cacert.no_san.pem')
+diff --git a/urllib3/packages/ssl_match_hostname/__init__.py b/urllib3/packages/ssl_match_hostname/__init__.py
+index dd59a75fd..d6594eb26 100644
+--- a/urllib3/packages/ssl_match_hostname/__init__.py
++++ b/urllib3/packages/ssl_match_hostname/__init__.py
+@@ -1,5 +1,11 @@
++import sys
++
+ try:
+-    # Python 3.2+
++    # Our match_hostname function is the same as 3.5's, so we only want to
++    # import the match_hostname function if it's at least that good.
++    if sys.version_info < (3, 5):
++        raise ImportError("Fallback to vendored code")
++
+     from ssl import CertificateError, match_hostname
+ except ImportError:
+     try:
+diff --git a/urllib3/packages/ssl_match_hostname/_implementation.py b/urllib3/packages/ssl_match_hostname/_implementation.py
+index 52f428733..1fd42f38a 100644
+--- a/urllib3/packages/ssl_match_hostname/_implementation.py
++++ b/urllib3/packages/ssl_match_hostname/_implementation.py
+@@ -4,8 +4,20 @@
+ # stdlib.   http://docs.python.org/3/license.html
+ 
+ import re
++import sys
++
++# ipaddress has been backported to 2.6+ in pypi.  If it is installed on the
++# system, use it to handle IPAddress ServerAltnames (this was added in
++# python-3.5) otherwise only do DNS matching.  This allows
++# backports.ssl_match_hostname to continue to be used all the way back to
++# python-2.4.
++try:
++    import ipaddress
++except ImportError:
++    ipaddress = None
++
++__version__ = '3.5.0.1'
+ 
+-__version__ = '3.4.0.2'
+ 
+ class CertificateError(ValueError):
+     pass
+@@ -64,6 +76,23 @@ def _dnsname_match(dn, hostname, max_wildcards=1):
+     return pat.match(hostname)
+ 
+ 
++def _to_unicode(obj):
++    if isinstance(obj, str) and sys.version_info < (3,):
++        obj = unicode(obj, encoding='ascii', errors='strict')
++    return obj
++
++def _ipaddress_match(ipname, host_ip):
++    """Exact matching of IP addresses.
++
++    RFC 6125 explicitly doesn't define an algorithm for this
++    (section 1.7.2 - "Out of Scope").
++    """
++    # OpenSSL may add a trailing newline to a subjectAltName's IP address
++    # Divergence from upstream: ipaddress can't handle byte str
++    ip = ipaddress.ip_address(_to_unicode(ipname).rstrip())
++    return ip == host_ip
++
++
+ def match_hostname(cert, hostname):
+     """Verify that *cert* (in decoded format as returned by
+     SSLSocket.getpeercert()) matches the *hostname*.  RFC 2818 and RFC 6125
+@@ -73,12 +102,35 @@ def match_hostname(cert, hostname):
+     returns nothing.
+     """
+     if not cert:
+-        raise ValueError("empty or no certificate")
++        raise ValueError("empty or no certificate, match_hostname needs a "
++                         "SSL socket or SSL context with either "
++                         "CERT_OPTIONAL or CERT_REQUIRED")
++    try:
++        # Divergence from upstream: ipaddress can't handle byte str
++        host_ip = ipaddress.ip_address(_to_unicode(hostname))
++    except ValueError:
++        # Not an IP address (common case)
++        host_ip = None
++    except UnicodeError:
++        # Divergence from upstream: Have to deal with ipaddress not taking
++        # byte strings.  addresses should be all ascii, so we consider it not
++        # an ipaddress in this case
++        host_ip = None
++    except AttributeError:
++        # Divergence from upstream: Make ipaddress library optional
++        if ipaddress is None:
++            host_ip = None
++        else:
++            raise
+     dnsnames = []
+     san = cert.get('subjectAltName', ())
+     for key, value in san:
+         if key == 'DNS':
+-            if _dnsname_match(value, hostname):
++            if host_ip is None and _dnsname_match(value, hostname):
++                return
++            dnsnames.append(value)
++        elif key == 'IP Address':
++            if host_ip is not None and _ipaddress_match(value, host_ip):
+                 return
+             dnsnames.append(value)
+     if not dnsnames:

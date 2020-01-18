@@ -8,7 +8,7 @@
 
 Name:           python-%{srcname}
 Version:        1.10.2
-Release:        2%{?dist}
+Release:        5%{?dist}
 Summary:        Python HTTP library with thread-safe connection pooling and file post
 
 License:        MIT
@@ -19,6 +19,17 @@ Source0:        http://pypi.python.org/packages/source/u/%{srcname}/%{srcname}-%
 # https://bugzilla.redhat.com/show_bug.cgi?id=855320
 Patch0:         python-urllib3-default-ssl-cert-validate.patch
 
+# Patch for the PoolManager instance to consider additional SSL
+# configuration when providing a pooled connection for a request.
+# https://bugzilla.redhat.com/show_bug.cgi?id=1329395
+# Upstream issue: https://github.com/shazow/urllib3/pull/830
+Patch1: key-connection-pools-off-custom-keys.patch
+
+# Support IP address SAN fields.
+# https://bugzilla.redhat.com/show_bug.cgi?id=1434114
+# Upstream: https://github.com/shazow/urllib3/pull/922
+Patch2: Add-support-for-IP-address-SAN-fields.patch
+
 BuildArch:      noarch
 
 Requires:       ca-certificates
@@ -26,6 +37,7 @@ Requires:       ca-certificates
 # Previously bundled things:
 Requires:       python-six
 Requires:       python-backports-ssl_match_hostname
+Requires:       python-ipaddress
 
 %if 0%{?rhel} <= 6
 BuildRequires:  python-ordereddict
@@ -36,11 +48,11 @@ BuildRequires:  python2-devel
 BuildRequires:  python-setuptools
 BuildRequires:  python-six
 BuildRequires:  python-backports-ssl_match_hostname
+BuildRequires:  python-ipaddress
 # For unittests
 #BuildRequires: python-nose
-#BuildRequires: python-six
 #BuildRequires: python-tornado
-#BuildRequires: python-backports-ssl_match_hostname
+#BuildRequires: python-mock
 
 %if 0%{?with_python3}
 BuildRequires:  python3-devel
@@ -72,6 +84,8 @@ Python3 HTTP module with connection pooling and file POST abilities.
 rm -rf test/with_dummyserver/
 
 %patch0 -p1
+%patch1 -p1
+%patch2 -p1
 
 %if 0%{?with_python3}
 rm -rf %{py3dir}
@@ -114,7 +128,7 @@ rm -rf %{buildroot}%{python3_sitelib}/dummyserver
 popd
 %endif # with_python3
 
-#%check
+#%%check
 #nosetests
 
 #%if 0%{?with_python3}
@@ -136,17 +150,25 @@ popd
 %endif # with_python3
 
 %changelog
-* Wed Aug 05 2015 Scientific Linux Auto Patch Process <SCIENTIFIC-LINUX-DEVEL@LISTSERV.FNAL.GOV>
-- Eliminated rpmbuild "bogus date" error due to inconsistent weekday,
-  by assuming the date is correct and changing the weekday.
+* Wed Oct 11 2017 Iryna Shcherbina <ishcherb@redhat.com> - 1.10.2-5
+- Add patch to support IP address SAN fields.
+Resolves: rhbz#1434114
+
+* Thu Sep 14 2017 Charalampos Stratakis <cstratak@redhat.com> - 1.10.2-4
+- Update patch to find ca_certs in the correct location.
+Resolves: rhbz#1450213
+
+* Mon Jan 23 2017 Iryna Shcherbina <ishcherb@redhat.com> - 1.10.2-3
+- Fix PoolManager instance to take into account new SSL configuration
+Resolves: rhbz#1329395
 
 * Mon Jul 27 2015 bkabrda <bkabrda@redhat.com> - 1.10.2-2
 - Fix the way we unbundle six to make ovirt work even when they remove .py files
-Resolves: rhbz#1247189
+Resolves: rhbz#1247093
 
 * Mon Apr 13 2015 Matej Stuchlik <mstuchli@redhat.com> - 1.10.2-1
 - Update to 1.10.2
-Resolves: rhbz#1233112
+Resolves: rhbz#1226901
 
 * Fri Mar  1 2013 Toshio Kuratomi <toshio@fedoraproject.org> - 1.5-5
 - Unbundling finished!
