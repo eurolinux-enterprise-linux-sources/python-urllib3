@@ -8,7 +8,7 @@
 
 Name:           python-%{srcname}
 Version:        1.10.2
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Python HTTP library with thread-safe connection pooling and file post
 
 License:        MIT
@@ -95,7 +95,11 @@ rm -rf %{buildroot}/%{python_sitelib}/urllib3/packages/six.py*
 rm -rf %{buildroot}/%{python_sitelib}/urllib3/packages/ssl_match_hostname/
 
 mkdir -p %{buildroot}/%{python_sitelib}/urllib3/packages/
-ln -s ../../six.py %{buildroot}/%{python_sitelib}/urllib3/packages/six.py
+# ovirt composes remove *.py files, leaving only *.pyc files there; this means we have to symlink
+#  six.py* to make sure urllib3.packages.six will be importable
+for i in ../../six.py{,o,c}; do
+  ln -s $i %{buildroot}/%{python_sitelib}/urllib3/packages/
+done
 ln -s ../../backports/ssl_match_hostname %{buildroot}/%{python_sitelib}/urllib3/packages/ssl_match_hostname
 
 # dummyserver is part of the unittest framework
@@ -132,9 +136,13 @@ popd
 %endif # with_python3
 
 %changelog
-* Wed Jul 22 2015 Scientific Linux Auto Patch Process <SCIENTIFIC-LINUX-DEVEL@LISTSERV.FNAL.GOV>
+* Wed Aug 05 2015 Scientific Linux Auto Patch Process <SCIENTIFIC-LINUX-DEVEL@LISTSERV.FNAL.GOV>
 - Eliminated rpmbuild "bogus date" error due to inconsistent weekday,
   by assuming the date is correct and changing the weekday.
+
+* Mon Jul 27 2015 bkabrda <bkabrda@redhat.com> - 1.10.2-2
+- Fix the way we unbundle six to make ovirt work even when they remove .py files
+Resolves: rhbz#1247189
 
 * Mon Apr 13 2015 Matej Stuchlik <mstuchli@redhat.com> - 1.10.2-1
 - Update to 1.10.2
